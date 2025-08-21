@@ -1,0 +1,51 @@
+name: Build & Deploy (site1)
+
+on:
+  push:
+    branches:
+      - main   # change to your deploy branch
+
+jobs:
+  build-deploy:
+    # use the self-hosted runner created above (label 'site1')
+    runs-on: [self-hosted, site1, linux]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure nvm is loaded
+        shell: bash
+        run: |
+          export NVM_DIR="$HOME/.nvm"
+          # load nvm
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          # ensure node is available (use the default installed by the deploy user)
+          nvm use --lts || nvm install --lts
+          node -v
+          npm -v
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          npm ci
+
+      - name: Build Vite app
+        shell: bash
+        run: |
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          npm run build
+
+      - name: Deploy to webroot
+        shell: bash
+        run: |
+          # copy build output to site webroot (runner user owns /var/www/site1)
+          rsync -av --delete ./dist/ /var/www/site1/
+          # optionally set permissions
+          chmod -R 755 /var/www/site1
+
+      - name: Notify (optional)
+        run: echo "Deployed to /var/www/site1 on ${RUNNER_NAME}"
