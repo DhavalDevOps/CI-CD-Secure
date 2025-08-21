@@ -17,20 +17,22 @@ jobs:
       # 2. Setup Node (via nvm)
       - name: Setup Node.js with nvm
         run: |
-          export NVM_DIR="$HOME/.nvm"
-          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-          nvm install 20
-          nvm use 20
-          node -v
-          npm -v
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            nvm install 20
+            nvm alias default 20
+            nvm use 20
+            node -v
+            npm -v
 
       # 3. Install deps & build
       - name: Install & Build
         run: |
-          export NVM_DIR="$HOME/.nvm"
-          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-          npm ci
-          npm run build
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            nvm use 20
+            npm ci
+            npm run build
 
       # 4. Rsync build to /var/www/site1
       - name: Deploy to Nginx root
