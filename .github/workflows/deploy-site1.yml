@@ -1,40 +1,51 @@
-name: CI/CD Pipeline
+name: Build & Deploy (site1)
 
 on:
   push:
     branches:
-      - main
+      - main   # change to your deploy branch
 
 jobs:
-  build:
-    runs-on: self-hosted
+  build-deploy:
+    # use the self-hosted runner created above (label 'site1')
+    runs-on: [self-hosted, X64, linux]
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node 20 using NVM
+      - name: Ensure nvm is loaded
+        shell: bash
         run: |
           export NVM_DIR="$HOME/.nvm"
+          # load nvm
           [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-          nvm install 20
-          nvm use 20
+          # ensure node is available (use the default installed by the deploy user)
+          nvm use --lts || nvm install --lts
           node -v
           npm -v
 
-      - name: Clean install dependencies
+      - name: Install dependencies
+        shell: bash
         run: |
           export NVM_DIR="$HOME/.nvm"
           [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-          rm -rf node_modules package-lock.json
-          npm install
+          npm ci
 
-      - name: Build Vite project
+      - name: Build Vite app
+        shell: bash
         run: |
           export NVM_DIR="$HOME/.nvm"
           [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
           npm run build
 
-      - name: Deploy (example)
+      - name: Deploy to webroot
+        shell: bash
         run: |
-          echo "Add your deployment steps here"
+          # copy build output to site webroot (runner user owns /var/www/site1)
+          rsync -av --delete ./dist/ /var/www/site1/
+          # optionally set permissions
+          chmod -R 755 /var/www/site1
+
+      - name: Notify (optional)
+        run: echo "Deployed to /var/www/site1 on ${RUNNER_NAME}"
