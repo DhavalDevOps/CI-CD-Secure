@@ -62,7 +62,7 @@ function App() {
 
 
       <p className="read-the-docs">
-        Dhaval Chhayla | Junior DevOps Engineer
+        Dhaval Chhayla | DevOps Engineer
       </p>
 
       <div className="card">
