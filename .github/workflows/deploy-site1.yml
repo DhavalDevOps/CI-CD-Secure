@@ -40,12 +40,19 @@ jobs:
         run: |
             npm run build
 
-      # 4. Rsync build to /var/www/site1
-      - name: Deploy to Nginx root
+    #   # 4. Rsync build to /var/www/site1
+    #   - name: Deploy to Nginx root
+    #     run: |
+    #       rsync -avz --delete dist/ /var/www/site1/
+    #       sudo chown -R www-data:www-data /var/www/site1
+    #       sudo chmod -R 755 /var/www/site1
+
+      - name: Deploy with rsync
         run: |
-          rsync -avz --delete dist/ /var/www/site1/
-          sudo chown -R www-data:www-data /var/www/site1
-          sudo chmod -R 755 /var/www/site1
+            rsync -avz --delete \
+            --chown=deploy-site1:deploy-site1 \
+            dist/ /var/www/site1/
+          
 
       # 5. Reload Nginx
       - name: Reload Nginx
