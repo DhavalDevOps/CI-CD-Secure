@@ -8,7 +8,7 @@ on:
 jobs:
   build-deploy:
     # use the self-hosted runner created above (label 'site1')
-    runs-on: [self-hosted, site1, linux]
+    runs-on: [self-hosted, X64, linux]
 
     steps:
       - name: Checkout
