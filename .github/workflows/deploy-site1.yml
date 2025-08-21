@@ -1,51 +1,45 @@
-name: Build & Deploy (site1)
+name: Deploy React App to EC2
 
 on:
   push:
     branches:
-      - main   # change to your deploy branch
+      - main   # Change branch if needed
 
 jobs:
   build-deploy:
-    # use the self-hosted runner created above (label 'site1')
-    runs-on: [self-hosted, X64, linux]
+    runs-on: self-hosted   # your EC2 runner
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      # 1. Checkout code
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
-      - name: Ensure nvm is loaded
-        shell: bash
+      # 2. Setup Node (via nvm)
+      - name: Setup Node.js with nvm
         run: |
           export NVM_DIR="$HOME/.nvm"
-          # load nvm
           [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-          # ensure node is available (use the default installed by the deploy user)
-          nvm use --lts || nvm install --lts
+          nvm install 20
+          nvm use 20
           node -v
           npm -v
 
-      - name: Install dependencies
-        shell: bash
+      # 3. Install deps & build
+      - name: Install & Build
         run: |
           export NVM_DIR="$HOME/.nvm"
           [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
           npm ci
-
-      - name: Build Vite app
-        shell: bash
-        run: |
-          export NVM_DIR="$HOME/.nvm"
-          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
           npm run build
 
-      - name: Deploy to webroot
-        shell: bash
+      # 4. Rsync build to /var/www/site1
+      - name: Deploy to Nginx root
         run: |
-          # copy build output to site webroot (runner user owns /var/www/site1)
-          rsync -av --delete ./dist/ /var/www/site1/
-          # optionally set permissions
-          chmod -R 755 /var/www/site1
+          rsync -avz --delete dist/ /var/www/site1/
+          sudo chown -R www-data:www-data /var/www/site1
+          sudo chmod -R 755 /var/www/site1
 
-      - name: Notify (optional)
-        run: echo "Deployed to /var/www/site1 on ${RUNNER_NAME}"
+      # 5. Reload Nginx
+      - name: Reload Nginx
+        run: |
+          sudo systemctl reload nginx
