@@ -1,121 +1,193 @@
-name: Deploy React App to EC2
+# GitHub Actions Workflow: Deploy React App to EC2 & Send HTML Email Notification
+#
+# Description:
+# This workflow automates the deployment of a React application.
+# It triggers on a push to the 'main' branch, builds the application on a
+# self-hosted EC2 runner, deploys the static files to an Nginx web server,
+# and sends a detailed HTML email notification about the deployment status.
+
+name: Deploy React App to EC2 with Enhanced Notification
 
 on:
   push:
     branches:
-      - main   # Change branch if needed
+      - main # Triggers the workflow on push events to the main branch
 
 jobs:
+  # =================================================================
+  # JOB 1: BUILD & DEPLOY
+  # =================================================================
+  # This job checks out the code, sets up Node.js, builds the React app,
+  # and deploys it to the Nginx web root on the self-hosted runner.
+  # =================================================================
   build-deploy:
-    runs-on: self-hosted   # your EC2 runner
+    name: Build & Deploy
+    runs-on: self-hosted # IMPORTANT: Runs on your configured EC2 runner
+    timeout-minutes: 10
 
     steps:
-      # 1. Checkout repo
-      - name: Checkout repo
-        uses: actions/checkout@v3
+      # ---------------------------------
+      # Step 1: Checkout Repository
+      # ---------------------------------
+      - name: ⬇️ Checkout repository
+        uses: actions/checkout@v4
 
-      # 2. Setup Node (via nvm)
-      - name: Setup Node.js with nvm
+      # ---------------------------------
+      # Step 2: Setup Node.js Environment
+      # ---------------------------------
+      - name: 🟢 Setup Node.js v20
         run: |
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            nvm install 20
-            nvm alias default 20
-            nvm use 20
-            node -v
-            npm -v
+          # Source nvm and install/use the correct Node.js version
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          nvm install 20
+          nvm use 20
+          echo "Node version: $(node -v)"
+          echo "npm version: $(npm -v)"
 
-      # 3. Install deps & build
-
-      - name: Install Dependencies
+      # ---------------------------------
+      # Step 3: Install Dependencies & Build
+      # ---------------------------------
+      - name: 📦 Install Dependencies
         run: |
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            nvm use 20
-            rm -rf node_modules package-lock.json   # 🔑 clean install
-            npm install --legacy-peer-deps
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          nvm use 20
+          # Clean install for consistency
+          rm -rf node_modules package-lock.json
+          npm install --legacy-peer-deps
 
-
-      - name: Install & Build
+      - name: 🛠️ Build Application
         run: |
-            npm run build
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          nvm use 20
+          npm run build
 
-    #   # 4. Rsync build to /var/www/site1
-    #   - name: Deploy to Nginx root
-    #     run: |
-    #       rsync -avz --delete dist/ /var/www/site1/
-    #       sudo chown -R www-data:www-data /var/www/site1
-    #       sudo chmod -R 755 /var/www/site1
-
-      - name: Deploy with rsync
+      # ---------------------------------
+      # Step 4: Deploy to Nginx Directory
+      # ---------------------------------
+      - name: 🚀 Deploy with rsync
         run: |
-            rsync -avz --delete dist/ /var/www/site1/
-          
+          # Use rsync to efficiently sync the build output to the web server root
+          # --delete flag removes files in the destination that are not in the source
+          rsync -avz --delete dist/ /var/www/site1/
 
-      # 5. Reload Nginx
-      - name: Reload Nginx
+      # ---------------------------------
+      # Step 5: Reload Nginx Server
+      # ---------------------------------
+      - name: 🔄 Reload Nginx
         run: |
+          # Apply the changes by gracefully reloading the Nginx service
           sudo systemctl reload nginx
 
+  # =================================================================
+  # JOB 2: SEND NOTIFICATION
+  # =================================================================
+  # This job runs after 'build-deploy' completes. It composes and
+  # sends a formatted HTML email with the deployment status and details.
+  # It runs regardless of whether the previous job succeeded or failed.
+  # =================================================================
   notify:
-    name: Send notification email
+    name: Send Deployment Notification
     needs: build-deploy
     runs-on: ubuntu-latest
-    if: always()  
+    if: always() # Ensures this job runs even if build-deploy fails
+
     steps:
-      - name: Checkout (for commit info)
-        uses: actions/checkout@v3
+      # ---------------------------------
+      # Step 1: Get Commit Information
+      # ---------------------------------
+      - name: ⬇️ Checkout for commit info
+        uses: actions/checkout@v4
 
-      - name: Compose email body
-        # we write a multiline env var BODY to $GITHUB_ENV
+      # ---------------------------------
+      # Step 2: Compose HTML Email Body
+      # ---------------------------------
+      - name: 📝 Compose HTML Email Body
+        id: compose_email
         run: |
-          set -euo pipefail
-          BRANCH="${GITHUB_REF#refs/heads/}"
-          STATUS="${{ needs.build-deploy.result }}"        
-          COMMIT="$GITHUB_SHA"
-          COMMIT_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$COMMIT"
-          RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          WORKFLOW="$GITHUB_WORKFLOW"
-          ACTOR="$GITHUB_ACTOR"
+          # Determine status and corresponding color
+          STATUS="${{ needs.build-deploy.result }}"
+          if [ "$STATUS" == "success" ]; then
+            STATUS_COLOR="#28a745" # Green
+            STATUS_ICON="✅"
+          else
+            STATUS_COLOR="#dc3545" # Red
+            STATUS_ICON="❌"
+          fi
 
-          # fallback start time if GITHUB_RUN_STARTED_AT is empty
-          STARTED_AT="${GITHUB_RUN_STARTED_AT:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
+          # Get commit details
+          COMMIT_SHA_SHORT=$(git rev-parse --short HEAD)
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          COMMIT_AUTHOR=$(git log -1 --pretty="format:%an")
 
-          # last commit message and author
-          LAST_COMMIT=$(git --no-pager log -1 --pretty=format:"%s — %an <%ae>")
+          # Prepare the HTML body
+          BODY="""
+          <!DOCTYPE html>
+          <html>
+          <head>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { width: 100%; max-width: 600px; margin: 20px auto; background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; }
+            .header { background-color: ${STATUS_COLOR}; color: white; padding: 20px; text-align: center; }
+            .header h1 { margin: 0; font-size: 24px; }
+            .content { padding: 25px; }
+            .content table { width: 100%; border-collapse: collapse; }
+            .content th, .content td { padding: 10px 0; text-align: left; border-bottom: 1px solid #eee; }
+            .content th { color: #888; width: 120px; }
+            .commit-info { background-color: #f6f8fa; padding: 15px; border-radius: 6px; margin-top: 20px; font-family: 'Courier New', Courier, monospace; }
+            .commit-info p { margin: 0; white-space: pre-wrap; word-wrap: break-word; }
+            .footer { text-align: center; padding: 20px; font-size: 12px; color: #888; }
+            .button { display: inline-block; padding: 10px 20px; margin-top: 15px; background-color: #0366d6; color: #ffffff; text-decoration: none; border-radius: 5px; }
+            .button:hover { background-color: #0056b3; }
+          </style>
+          </head>
+          <body>
+            <div class='container'>
+              <div class='header'>
+                <h1>${STATUS_ICON} Deployment ${STATUS}</h1>
+              </div>
+              <div class='content'>
+                <table>
+                  <tr><th>Repository</th><td>${GITHUB_REPOSITORY}</td></tr>
+                  <tr><th>Branch</th><td>${GITHUB_REF_NAME}</td></tr>
+                  <tr><th>Triggered by</th><td>${GITHUB_ACTOR}</td></tr>
+                  <tr><th>Workflow</th><td>${GITHUB_WORKFLOW}</td></tr>
+                </table>
+                <div class='commit-info'>
+                  <p><strong>Commit:</strong> <a href='${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}'>${COMMIT_SHA_SHORT}</a></p>
+                  <p><strong>Author:</strong> ${COMMIT_AUTHOR}</p>
+                  <p><strong>Message:</strong><br>${COMMIT_MSG}</p>
+                </div>
+                <div style='text-align:center;'>
+                  <a href='${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}' class='button'>View Workflow Run</a>
+                </div>
+              </div>
+              <div class='footer'>
+                This is an automated notification from GitHub Actions.
+              </div>
+            </div>
+          </body>
+          </html>
+          """
+          # Use a delimiter to handle multiline string for GitHub Actions
+          echo "email_body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
-          cat >> "$GITHUB_ENV" <<GH
-          BODY<<EOF
-          CI/CD Notification - ${STATUS}
-
-          Repository: ${GITHUB_REPOSITORY}
-          Branch: ${BRANCH}
-          Workflow: ${WORKFLOW}
-          Triggered by: ${ACTOR}
-          Status: ${STATUS}
-          Commit: ${COMMIT}
-          Commit URL: ${COMMIT_URL}
-          Run URL: ${RUN_URL}
-          Started at: ${STARTED_AT}
-
-          Last commit:
-          ${LAST_COMMIT}
-
-          Notes:
-          - If status is 'failure' check the run logs at the Run URL above.
-          - Deployed files (if success) were synced to /var/www/site1 on your EC2.
-          EOF
-          GH
-          
-      - name: Send email via Gmail SMTP
+      # ---------------------------------
+      # Step 3: Send the Email
+      # ---------------------------------
+      - name: 📧 Send Notification Email
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
           server_port: 465
           username: ${{ secrets.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "CI/CD: ${{ needs.build-deploy.result }} — ${{ github.repository }} #${{ github.run_number }}"
-          body: ${{ env.BODY }}
+          subject: "${{ needs.build-deploy.result == 'success' && '✅' || '❌' }} CI/CD: ${{ needs.build-deploy.result }} | ${{ github.repository }} #${{ github.run_number }}"
+          html_body: ${{ steps.compose_email.outputs.email_body }}
           to: ${{ secrets.NOTIFY_TO }}
           cc: ${{ secrets.NOTIFY_CC }}
           from: "${{ secrets.EMAIL_FROM_NAME }} <${{ secrets.SMTP_USERNAME }}>"
