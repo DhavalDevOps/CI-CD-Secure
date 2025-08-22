@@ -10,7 +10,7 @@ jobs:
     runs-on: self-hosted   # your EC2 runner
 
     steps:
-      # 1. Checkout code
+      # 1. Checkout repo
       - name: Checkout repo
         uses: actions/checkout@v3
 
@@ -56,3 +56,62 @@ jobs:
       - name: Reload Nginx
         run: |
           sudo systemctl reload nginx
+
+  notify:
+    name: Send notification email
+    needs: build-deploy
+    runs-on: ubuntu-latest
+    if: always()   # run on success OR failure OR cancelled
+    steps:
+      - name: Checkout (for commit info)
+        uses: actions/checkout@v3
+
+      - name: Compose email body
+        # we write a multiline env var BODY to $GITHUB_ENV
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          STATUS="${{ needs.build-deploy.result }}"        # success / failure / cancelled
+          COMMIT="$GITHUB_SHA"
+          COMMIT_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$COMMIT"
+          RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          WORKFLOW="$GITHUB_WORKFLOW"
+          ACTOR="$GITHUB_ACTOR"
+          STARTED_AT="$GITHUB_RUN_STARTED_AT"
+
+          # last commit message and author
+          LAST_COMMIT=$(git --no-pager log -1 --pretty=format:"%s — %an <%ae>")
+
+          echo "BODY<<'EOF'" >> $GITHUB_ENV
+          echo "CI/CD Notification - $STATUS"
+          echo ""
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "Branch: $BRANCH"
+          echo "Workflow: $WORKFLOW"
+          echo "Triggered by: $ACTOR"
+          echo "Status: $STATUS"
+          echo "Commit: $COMMIT"
+          echo "Commit URL: $COMMIT_URL"
+          echo "Run URL: $RUN_URL"
+          echo "Started at: $STARTED_AT"
+          echo ""
+          echo "Last commit:"
+          echo "$LAST_COMMIT"
+          echo ""
+          echo "Notes:"
+          echo "- If status is 'failure' check the run logs at the Run URL above."
+          echo "- Deployed files (if success) were synced to /var/www/site1 on your EC2."
+          echo "EOF"
+
+      - name: Send email via Gmail SMTP
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "CI/CD: ${{ needs.build-deploy.result }} — ${{ github.repository }} #${{ github.run_number }}"
+          body: ${{ env.BODY }}
+          to: ${{ secrets.NOTIFY_TO }}
+          cc: ${{ secrets.NOTIFY_CC }}
+          from: "${{ secrets.EMAIL_FROM_NAME }} <${{ secrets.SMTP_USERNAME }}>"
+          secure: true
