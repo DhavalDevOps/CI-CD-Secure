@@ -61,7 +61,7 @@ jobs:
     name: Send notification email
     needs: build-deploy
     runs-on: ubuntu-latest
-    if: always()   # run on success OR failure OR cancelled
+    if: always()  
     steps:
       - name: Checkout (for commit info)
         uses: actions/checkout@v3
@@ -70,7 +70,7 @@ jobs:
         # we write a multiline env var BODY to $GITHUB_ENV
         run: |
           BRANCH="${GITHUB_REF#refs/heads/}"
-          STATUS="${{ needs.build-deploy.result }}"        # success / failure / cancelled
+          STATUS="${{ needs.build-deploy.result }}"        
           COMMIT="$GITHUB_SHA"
           COMMIT_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$COMMIT"
           RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
