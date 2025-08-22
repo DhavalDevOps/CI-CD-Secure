@@ -176,15 +176,16 @@ jobs:
           </html>
           HTML
 
-           # Append into GITHUB_ENV properly
-          echo "TEXT_BODY<<'EOF'" >> "$GITHUB_ENV"
-          cat /tmp/ci_text_body.txt >> "$GITHUB_ENV"
-          echo "EOF" >> "$GITHUB_ENV"
+           # --- place both bodies into step outputs via $GITHUB_OUTPUT safely ---
+          # write the plain text output
+          echo "text<<'EOF'" >> "$GITHUB_OUTPUT"
+          cat /tmp/ci_text_body.txt >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
-          echo "HTML_BODY<<'EOF'" >> "$GITHUB_ENV"
-          cat /tmp/ci_html_body.html >> "$GITHUB_ENV"
-          echo "EOF" >> "$GITHUB_ENV"
-          EOF
+          # write the html output
+          echo "html<<'EOF'" >> "$GITHUB_OUTPUT"
+          cat /tmp/ci_html_body.html >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
       
       - name: Send email via Gmail SMTP
         uses: dawidd6/action-send-mail@v3
