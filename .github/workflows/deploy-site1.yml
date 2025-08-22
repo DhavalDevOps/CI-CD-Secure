@@ -179,7 +179,7 @@ jobs:
       # ---------------------------------
       # Step 3: Send the Email
       # ---------------------------------
-      - name: 📧 Send Notification Email
+      - name: 📧 Send Notification Emails
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
