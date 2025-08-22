@@ -58,34 +58,38 @@ jobs:
           sudo systemctl reload nginx
 
   notify:
-    name: Send notification email
+    name: Send notification email (pretty HTML)
     needs: build-deploy
     runs-on: ubuntu-latest
-    if: always()  
+    if: always()
+
     steps:
       - name: Checkout (for commit info)
         uses: actions/checkout@v3
 
-      - name: Compose email body
-        # we write a multiline env var BODY to $GITHUB_ENV
+      - name: Compose text + HTML bodies
         run: |
           set -euo pipefail
+
           BRANCH="${GITHUB_REF#refs/heads/}"
-          STATUS="${{ needs.build-deploy.result }}"        
+          STATUS="${{ needs.build-deploy.result }}"
           COMMIT="$GITHUB_SHA"
+          COMMIT_SHORT=${COMMIT:0:7}
           COMMIT_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$COMMIT"
           RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           WORKFLOW="$GITHUB_WORKFLOW"
           ACTOR="$GITHUB_ACTOR"
-
-          # fallback start time if GITHUB_RUN_STARTED_AT is empty
           STARTED_AT="${GITHUB_RUN_STARTED_AT:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
-
-          # last commit message and author
           LAST_COMMIT=$(git --no-pager log -1 --pretty=format:"%s — %an <%ae>")
 
-          cat >> "$GITHUB_ENV" <<GH
-          BODY<<EOF
+          if [ "$STATUS" = "success" ]; then
+            STATUS_COLOR="#16a34a"
+          else
+            STATUS_COLOR="#ef4444"
+          fi
+
+          # Plain text
+          cat > /tmp/ci_text_body.txt <<TXT
           CI/CD Notification - ${STATUS}
 
           Repository: ${GITHUB_REPOSITORY}
@@ -93,7 +97,7 @@ jobs:
           Workflow: ${WORKFLOW}
           Triggered by: ${ACTOR}
           Status: ${STATUS}
-          Commit: ${COMMIT}
+          Commit: ${COMMIT_SHORT}
           Commit URL: ${COMMIT_URL}
           Run URL: ${RUN_URL}
           Started at: ${STARTED_AT}
@@ -104,9 +108,83 @@ jobs:
           Notes:
           - If status is 'failure' check the run logs at the Run URL above.
           - Deployed files (if success) were synced to /var/www/site1 on your EC2.
-          EOF
-          GH
+          TXT
           
+          # HTML body (inline CSS)
+          cat > /tmp/ci_html_body.html <<HTML
+          <!doctype html>
+          <html>
+            <head>
+              <meta charset="utf-8" />
+              <title>CI/CD Notification</title>
+            </head>
+            <body style="font-family:Arial,Helvetica,sans-serif;background:#f6f7fb;margin:0;padding:24px;">
+              <div style="max-width:700px;margin:0 auto;background:#ffffff;border-radius:8px;box-shadow:0 6px 20px rgba(16,24,40,0.08);overflow:hidden;">
+                <div style="padding:20px 24px;border-bottom:1px solid #eef2f7;display:flex;align-items:center;justify-content:space-between;">
+                  <div>
+                    <strong style="font-size:18px;color:#0f172a;">${GITHUB_REPOSITORY}</strong><br/>
+                    <span style="color:#475569;font-size:13px;">Workflow: ${WORKFLOW} • Branch: ${BRANCH}</span>
+                  </div>
+                  <div style="text-align:right;">
+                    <span style="display:inline-block;padding:8px 12px;border-radius:999px;background:${STATUS_COLOR};color:#fff;font-weight:600;">
+                      ${STATUS^^}
+                    </span>
+                  </div>
+                </div>
+
+                <div style="padding:18px 24px;">
+                  <table style="width:100%;border-collapse:collapse;font-size:14px;color:#0f172a;">
+                    <tr>
+                      <td style="padding:8px 0;font-weight:600;width:120px">Triggered by</td>
+                      <td style="padding:8px 0">${ACTOR}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:8px 0;font-weight:600">Commit</td>
+                      <td style="padding:8px 0"><a href="${COMMIT_URL}" style="color:#0369a1;text-decoration:none">${COMMIT_SHORT}</a></td>
+                    </tr>
+                    <tr>
+                      <td style="padding:8px 0;font-weight:600">Run</td>
+                      <td style="padding:8px 0"><a href="${RUN_URL}" style="color:#0369a1;text-decoration:none">View run logs</a></td>
+                    </tr>
+                    <tr>
+                      <td style="padding:8px 0;font-weight:600">Started at</td>
+                      <td style="padding:8px 0">${STARTED_AT}</td>
+                    </tr>
+                  </table>
+
+                  <hr style="border:none;border-top:1px solid #eef2f7;margin:16px 0;" />
+
+                  <div style="font-size:13px;color:#334155;">
+                    <strong>Last commit</strong>
+                    <div style="margin-top:8px;padding:12px;background:#f8fafc;border-radius:6px;color:#0f172a;">${LAST_COMMIT}</div>
+                  </div>
+
+                  <div style="margin-top:18px;font-size:13px;color:#475569">
+                    <strong>Notes</strong>
+                    <ul style="margin:8px 0 0 18px;">
+                      <li>If status is <strong>failure</strong> check the run logs at the Run URL above.</li>
+                      <li>Deployed files (if success) were synced to <code>/var/www/site1</code> on your EC2.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div style="background:#f8fafc;padding:12px 24px;border-top:1px solid #eef2f7;color:#7c8796;font-size:12px;">
+                  This is an automated message from your GitHub Actions CI/CD pipeline.
+                </div>
+              </div>
+            </body>
+          </html>
+          HTML
+
+           # Append into GITHUB_ENV properly
+          echo "TEXT_BODY<<'EOF'" >> "$GITHUB_ENV"
+          cat /tmp/ci_text_body.txt >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+
+          echo "HTML_BODY<<'EOF'" >> "$GITHUB_ENV"
+          cat /tmp/ci_html_body.html >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+      
       - name: Send email via Gmail SMTP
         uses: dawidd6/action-send-mail@v3
         with:
