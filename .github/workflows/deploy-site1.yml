@@ -184,6 +184,7 @@ jobs:
           echo "HTML_BODY<<'EOF'" >> "$GITHUB_ENV"
           cat /tmp/ci_html_body.html >> "$GITHUB_ENV"
           echo "EOF" >> "$GITHUB_ENV"
+          EOF
       
       - name: Send email via Gmail SMTP
         uses: dawidd6/action-send-mail@v3
