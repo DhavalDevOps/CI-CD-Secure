@@ -68,6 +68,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Compose text + HTML bodies
+        id: compose
         run: |
           set -euo pipefail
 
@@ -88,7 +89,7 @@ jobs:
             STATUS_COLOR="#ef4444"
           fi
 
-          # Plain text
+          
           cat > /tmp/ci_text_body.txt <<TXT
           CI/CD Notification - ${STATUS}
 
@@ -110,8 +111,8 @@ jobs:
           - Deployed files (if success) were synced to /var/www/site1 on your EC2.
           TXT
           
-          # HTML body (inline CSS)
-          cat > /tmp/ci_html_body.html <<HTML
+          
+          cat > /tmp/ci_html_body.html <<'HTML'
           <!doctype html>
           <html>
             <head>
@@ -176,13 +177,11 @@ jobs:
           </html>
           HTML
 
-           # --- place both bodies into step outputs via $GITHUB_OUTPUT safely ---
-          # write the plain text output
+           
           echo "text<<'EOF'" >> "$GITHUB_OUTPUT"
           cat /tmp/ci_text_body.txt >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
-          # write the html output
           echo "html<<'EOF'" >> "$GITHUB_OUTPUT"
           cat /tmp/ci_html_body.html >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
